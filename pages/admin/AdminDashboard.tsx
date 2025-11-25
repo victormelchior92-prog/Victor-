@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useStore } from '../../context/Store';
 import { Content, ContentType, Episode } from '../../types';
-import { Plus, Trash, Users, Film, Play, LogOut, MessageSquare, Check, X, Video, Settings, List, Star } from 'lucide-react';
+import { Plus, Trash, Users, Film, LogOut, MessageSquare, Check, Video, Settings, List, Star, Link as LinkIcon, Image as ImageIcon } from 'lucide-react';
 
 export const AdminDashboard = () => {
   const { 
     content, addContent, deleteContent, 
     users, validateSubscription, logout, 
     adminSwitchToClient, categories, addCategory, deleteCategory,
-    suggestions, deleteSuggestion, updateUser
+    suggestions, deleteSuggestion
   } = useStore();
   
   const [tab, setTab] = useState<'content' | 'users' | 'custom' | 'suggestions'>('content');
@@ -22,25 +22,49 @@ export const AdminDashboard = () => {
     type: ContentType.MOVIE,
     category: categories[0]?.name || 'Action',
     rating: 5,
-    episodes: []
+    episodes: [],
+    videoUrl: '',
+    trailerUrl: '',
+    posterUrl: ''
   });
 
   // Episode Form State (Temp)
-  const [tempEp, setTempEp] = useState<Partial<Episode>>({ season: 1, episodeNumber: 1 });
+  const [tempEp, setTempEp] = useState<Partial<Episode>>({ season: 1, episodeNumber: 1, videoUrl: '' });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, field: 'posterUrl' | 'videoUrl' | 'trailerUrl') => {
+  // Helper to convert file to base64 for local storage persistence
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: 'posterUrl' | 'videoUrl' | 'trailerUrl') => {
     if (e.target.files && e.target.files[0]) {
-      const url = URL.createObjectURL(e.target.files[0]);
-      setNewContent(prev => ({ ...prev, [field]: url }));
+      const file = e.target.files[0];
       
-      // Auto detect duration for video (only if not series main container)
-      if(field === 'videoUrl') {
-         const video = document.createElement('video');
-         video.preload = 'metadata';
-         video.onloadedmetadata = () => {
-             setNewContent(prev => ({...prev, duration: Math.floor(video.duration)}));
-         };
-         video.src = url;
+      if (field === 'posterUrl') {
+        // Convert images to Base64 so they persist after reload
+        try {
+            const base64 = await fileToBase64(file);
+            setNewContent(prev => ({ ...prev, [field]: base64 }));
+        } catch (err) {
+            console.error("Error converting image", err);
+        }
+      } else {
+        // For videos, we still use Blob URL for preview, but recommend URL for persistence
+        const url = URL.createObjectURL(file);
+        setNewContent(prev => ({ ...prev, [field]: url }));
+        
+        // Auto detect duration
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.onloadedmetadata = () => {
+            setNewContent(prev => ({...prev, duration: Math.floor(video.duration)}));
+        };
+        video.src = url;
       }
     }
   };
@@ -88,7 +112,15 @@ export const AdminDashboard = () => {
     } as Content);
     
     setShowAddModal(false);
-    setNewContent({ type: ContentType.MOVIE, category: categories[0]?.name || 'Action', rating: 5, episodes: [] });
+    setNewContent({ 
+        type: ContentType.MOVIE, 
+        category: categories[0]?.name || 'Action', 
+        rating: 5, 
+        episodes: [],
+        videoUrl: '',
+        trailerUrl: '',
+        posterUrl: ''
+    });
   };
 
   const handleAddCategory = (e: React.FormEvent) => {
@@ -113,7 +145,7 @@ export const AdminDashboard = () => {
       </header>
 
       {/* Tabs */}
-      <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
+      <div className="flex gap-4 mb-6 overflow-x-auto pb-2 scrollbar-hide">
         <button onClick={() => setTab('content')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition whitespace-nowrap ${tab === 'content' ? 'bg-vtv-neon text-black' : 'bg-vtv-card text-gray-400'}`}>
           <Film size={20} /> Contenu
         </button>
@@ -363,20 +395,47 @@ export const AdminDashboard = () => {
                   <span className="font-bold text-yellow-400">{newContent.rating}</span>
               </div>
               
-              <div className="border border-gray-700 rounded p-4 border-dashed hover:border-vtv-neon transition-colors cursor-pointer relative group">
-                <label className="block mb-2 text-sm text-gray-400 pointer-events-none">Affiche (Image)</label>
+              {/* Poster Upload - Using Base64 */}
+              <div className="border border-gray-700 rounded p-4 border-dashed hover:border-vtv-neon transition-colors relative group">
+                <div className="flex items-center gap-2 mb-2">
+                    <ImageIcon size={16} className="text-vtv-neon" />
+                    <label className="text-sm text-gray-400 pointer-events-none">Affiche (Image)</label>
+                </div>
                 <input type="file" accept="image/*" onChange={e => handleFileChange(e, 'posterUrl')} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-vtv-neon file:text-black hover:file:bg-cyan-300"/>
               </div>
 
               {newContent.type !== ContentType.SERIES ? (
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="border border-gray-700 rounded p-4 border-dashed">
-                        <label className="block mb-2 text-sm text-gray-400">Vidéo (MP4)</label>
-                        <input type="file" accept="video/*" onChange={e => handleFileChange(e, 'videoUrl')} className="text-xs"/>
+                <div className="space-y-4">
+                    {/* Video Input */}
+                    <div className="border border-gray-700 rounded p-4 border-dashed bg-black/20">
+                        <label className="block mb-2 text-sm text-gray-400 flex items-center gap-2"><Video size={16}/> Film Complet</label>
+                        <div className="space-y-2">
+                            <input type="file" accept="video/*" onChange={e => handleFileChange(e, 'videoUrl')} className="text-xs w-full"/>
+                            <div className="text-center text-xs text-gray-500">- OU -</div>
+                            <input 
+                                type="text" 
+                                placeholder="Coller le lien MP4 ici..." 
+                                className="w-full bg-black border border-gray-600 rounded p-2 text-xs"
+                                value={newContent.videoUrl}
+                                onChange={e => setNewContent({...newContent, videoUrl: e.target.value})}
+                            />
+                        </div>
                     </div>
-                    <div className="border border-gray-700 rounded p-4 border-dashed">
-                        <label className="block mb-2 text-sm text-gray-400">Bande-annonce</label>
-                        <input type="file" accept="video/*" onChange={e => handleFileChange(e, 'trailerUrl')} className="text-xs"/>
+                    
+                    {/* Trailer Input */}
+                    <div className="border border-gray-700 rounded p-4 border-dashed bg-black/20">
+                        <label className="block mb-2 text-sm text-gray-400 flex items-center gap-2"><LinkIcon size={16}/> Bande-annonce</label>
+                        <div className="space-y-2">
+                            <input type="file" accept="video/*" onChange={e => handleFileChange(e, 'trailerUrl')} className="text-xs w-full"/>
+                            <div className="text-center text-xs text-gray-500">- OU -</div>
+                            <input 
+                                type="text" 
+                                placeholder="Lien MP4 Bande-annonce" 
+                                className="w-full bg-black border border-gray-600 rounded p-2 text-xs"
+                                value={newContent.trailerUrl}
+                                onChange={e => setNewContent({...newContent, trailerUrl: e.target.value})}
+                            />
+                        </div>
                     </div>
                 </div>
               ) : (
@@ -388,7 +447,18 @@ export const AdminDashboard = () => {
                           <input type="number" placeholder="Ep" className="bg-black p-2 rounded text-sm" value={tempEp.episodeNumber} onChange={e => setTempEp({...tempEp, episodeNumber: parseInt(e.target.value)})} />
                           <input type="text" placeholder="Titre épisode" className="col-span-2 bg-black p-2 rounded text-sm" value={tempEp.title} onChange={e => setTempEp({...tempEp, title: e.target.value})} />
                       </div>
-                      <input type="file" accept="video/*" onChange={handleEpisodeFile} className="text-xs mb-2 block w-full" />
+                      
+                      <div className="mb-2">
+                          <input type="file" accept="video/*" onChange={handleEpisodeFile} className="text-xs mb-1 block w-full" />
+                          <input 
+                                type="text" 
+                                placeholder="OU Lien Vidéo MP4" 
+                                className="w-full bg-black border border-gray-600 rounded p-2 text-xs"
+                                value={tempEp.videoUrl}
+                                onChange={e => setTempEp({...tempEp, videoUrl: e.target.value})}
+                           />
+                      </div>
+
                       <button type="button" onClick={addEpisodeToNewContent} disabled={!tempEp.title || !tempEp.videoUrl} className="w-full bg-gray-700 hover:bg-white hover:text-black py-2 rounded text-xs font-bold transition disabled:opacity-50">
                           AJOUTER ÉPISODE
                       </button>
