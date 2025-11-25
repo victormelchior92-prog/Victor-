@@ -31,25 +31,44 @@ export enum ContentType {
   ANIME = 'ANIME',
 }
 
+export interface Episode {
+  id: string;
+  title: string;
+  season: number;
+  episodeNumber: number;
+  videoUrl: string;
+  duration: number;
+}
+
 export interface Content {
   id: string;
   title: string;
   type: ContentType;
   category: string;
   posterUrl: string;
-  videoUrl: string; // Blob URL or external
+  videoUrl: string; // Main video for movies, or first ep for series logic fallback
   trailerUrl: string;
   description: string;
   releaseYear: number;
   duration: number; // in seconds
   cast: string[];
-  rating: number; // 1-5
+  rating: number; // 1-10 (Admin Note)
   addedAt: number;
+  episodes?: Episode[]; // Optional, for series
 }
 
 export interface Category {
   id: string;
   name: string;
+}
+
+export interface Suggestion {
+  id: string;
+  userId: string;
+  userName: string;
+  title: string;
+  message: string;
+  date: number;
 }
 
 // Gemini Live Types

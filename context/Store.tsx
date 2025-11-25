@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, Content, Category, UserRole, SubscriptionPlan } from '../types';
+import { User, Content, Category, UserRole, SubscriptionPlan, Suggestion, ContentType } from '../types';
 import { INITIAL_CATEGORIES, MOCK_CONTENT, ADMIN_EMAIL, ADMIN_PIN } from '../constants';
 
 interface StoreContextType {
@@ -7,6 +7,7 @@ interface StoreContextType {
   content: Content[];
   categories: Category[];
   users: User[]; // Admin sees all users
+  suggestions: Suggestion[];
   login: (email: string, pin: string) => Promise<boolean>;
   signup: (email: string, phone: string, pin: string, plan: SubscriptionPlan) => Promise<boolean>;
   logout: () => void;
@@ -18,9 +19,50 @@ interface StoreContextType {
   adminSwitchToClient: () => void;
   addCategory: (name: string) => void;
   deleteCategory: (id: string) => void;
+  addSuggestion: (title: string, message: string) => void;
+  deleteSuggestion: (id: string) => void;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
+
+// Enhanced Mock Data for Series
+const ENHANCED_MOCK_CONTENT: Content[] = [
+  ...MOCK_CONTENT.map(c => ({ ...c, rating: c.rating ? c.rating * 2 : 5 })), // Normalize old 5-star to 10
+  {
+    id: 'c4_series_top',
+    title: 'La Casa de Papel',
+    type: ContentType.SERIES,
+    category: 'Action',
+    posterUrl: 'https://picsum.photos/400/600?random=10',
+    videoUrl: '', // Series container
+    trailerUrl: '',
+    description: 'Eight thieves take hostages and lock themselves in the Royal Mint of Spain as a criminal mastermind manipulates the police to carry out his plan.',
+    releaseYear: 2017,
+    duration: 0,
+    cast: ['Úrsula Corberó', 'Álvaro Morte'],
+    rating: 9.8, // High rating for Top 10
+    addedAt: Date.now(),
+    episodes: [
+      { id: 'ep1', title: 'Partie 1: Épisode 1', season: 1, episodeNumber: 1, duration: 3000, videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4' },
+      { id: 'ep2', title: 'Partie 1: Épisode 2', season: 1, episodeNumber: 2, duration: 2800, videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4' },
+    ]
+  },
+  {
+    id: 'c5_movie_top',
+    title: 'Inception',
+    type: ContentType.MOVIE,
+    category: 'Science-Fiction',
+    posterUrl: 'https://picsum.photos/400/600?random=11',
+    videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+    trailerUrl: '',
+    description: 'A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.',
+    releaseYear: 2010,
+    duration: 8800,
+    cast: ['Leonardo DiCaprio'],
+    rating: 9.5,
+    addedAt: Date.now(),
+  }
+];
 
 export const StoreProvider = ({ children }: { children?: ReactNode }) => {
   const [user, setUser] = useState<User | null>(() => {
@@ -30,7 +72,7 @@ export const StoreProvider = ({ children }: { children?: ReactNode }) => {
 
   const [content, setContent] = useState<Content[]>(() => {
     const saved = localStorage.getItem('vtv_content');
-    return saved ? JSON.parse(saved) : MOCK_CONTENT;
+    return saved ? JSON.parse(saved) : ENHANCED_MOCK_CONTENT;
   });
 
   const [users, setUsers] = useState<User[]>(() => {
@@ -41,6 +83,11 @@ export const StoreProvider = ({ children }: { children?: ReactNode }) => {
   const [categories, setCategories] = useState<Category[]>(() => {
     const saved = localStorage.getItem('vtv_categories');
     return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
+  });
+
+  const [suggestions, setSuggestions] = useState<Suggestion[]>(() => {
+      const saved = localStorage.getItem('vtv_suggestions');
+      return saved ? JSON.parse(saved) : [];
   });
 
   useEffect(() => {
@@ -58,6 +105,10 @@ export const StoreProvider = ({ children }: { children?: ReactNode }) => {
   useEffect(() => {
     localStorage.setItem('vtv_categories', JSON.stringify(categories));
   }, [categories]);
+
+  useEffect(() => {
+    localStorage.setItem('vtv_suggestions', JSON.stringify(suggestions));
+  }, [suggestions]);
 
   // Check Subscription Expiry
   useEffect(() => {
@@ -185,13 +236,31 @@ export const StoreProvider = ({ children }: { children?: ReactNode }) => {
     setCategories(categories.filter(c => c.id !== id));
   };
 
+  const addSuggestion = (title: string, message: string) => {
+      if (!user) return;
+      const newSugg: Suggestion = {
+          id: Math.random().toString(36).substr(2, 9),
+          userId: user.id,
+          userName: user.name,
+          title,
+          message,
+          date: Date.now()
+      };
+      setSuggestions(prev => [newSugg, ...prev]);
+  };
+
+  const deleteSuggestion = (id: string) => {
+      setSuggestions(prev => prev.filter(s => s.id !== id));
+  };
+
   return (
     <StoreContext.Provider value={{ 
-      user, content, categories, users, 
+      user, content, categories, users, suggestions,
       login, signup, logout, updateUser, 
       addContent, deleteContent, 
       requestSubscription, validateSubscription, adminSwitchToClient,
-      addCategory, deleteCategory
+      addCategory, deleteCategory,
+      addSuggestion, deleteSuggestion
     }}>
       {children}
     </StoreContext.Provider>

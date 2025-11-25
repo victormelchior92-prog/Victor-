@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { useStore } from '../../context/Store';
-import { Content, ContentType, SubscriptionPlan } from '../../types';
-import { Plus, Trash, Users, Film, Play, LogOut, Smartphone, Check, X, Video, Settings, List } from 'lucide-react';
+import { Content, ContentType, Episode } from '../../types';
+import { Plus, Trash, Users, Film, Play, LogOut, MessageSquare, Check, X, Video, Settings, List, Star } from 'lucide-react';
 
 export const AdminDashboard = () => {
   const { 
     content, addContent, deleteContent, 
     users, validateSubscription, logout, 
-    adminSwitchToClient, categories, addCategory, deleteCategory 
+    adminSwitchToClient, categories, addCategory, deleteCategory,
+    suggestions, deleteSuggestion, updateUser
   } = useStore();
   
-  const [tab, setTab] = useState<'content' | 'users' | 'custom'>('content');
+  const [tab, setTab] = useState<'content' | 'users' | 'custom' | 'suggestions'>('content');
   const [showAddModal, setShowAddModal] = useState(false);
   
   // Customization State
@@ -19,15 +20,20 @@ export const AdminDashboard = () => {
   // Form State
   const [newContent, setNewContent] = useState<Partial<Content>>({
     type: ContentType.MOVIE,
-    category: categories[0]?.name || 'Action'
+    category: categories[0]?.name || 'Action',
+    rating: 5,
+    episodes: []
   });
+
+  // Episode Form State (Temp)
+  const [tempEp, setTempEp] = useState<Partial<Episode>>({ season: 1, episodeNumber: 1 });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, field: 'posterUrl' | 'videoUrl' | 'trailerUrl') => {
     if (e.target.files && e.target.files[0]) {
       const url = URL.createObjectURL(e.target.files[0]);
       setNewContent(prev => ({ ...prev, [field]: url }));
       
-      // Auto detect duration for video
+      // Auto detect duration for video (only if not series main container)
       if(field === 'videoUrl') {
          const video = document.createElement('video');
          video.preload = 'metadata';
@@ -39,6 +45,37 @@ export const AdminDashboard = () => {
     }
   };
 
+  const handleEpisodeFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          const url = URL.createObjectURL(e.target.files[0]);
+          setTempEp(prev => ({ ...prev, videoUrl: url }));
+           const video = document.createElement('video');
+           video.preload = 'metadata';
+           video.onloadedmetadata = () => {
+               setTempEp(prev => ({...prev, duration: Math.floor(video.duration)}));
+           };
+           video.src = url;
+      }
+  }
+
+  const addEpisodeToNewContent = () => {
+      if (tempEp.title && tempEp.videoUrl) {
+          const newEp: Episode = {
+              id: Math.random().toString(36).substr(2, 9),
+              title: tempEp.title,
+              season: tempEp.season || 1,
+              episodeNumber: tempEp.episodeNumber || 1,
+              videoUrl: tempEp.videoUrl,
+              duration: tempEp.duration || 0
+          };
+          setNewContent(prev => ({
+              ...prev,
+              episodes: [...(prev.episodes || []), newEp]
+          }));
+          setTempEp({ season: (tempEp.season || 1), episodeNumber: (tempEp.episodeNumber || 1) + 1, title: '', videoUrl: '' });
+      }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newContent.title || !newContent.posterUrl) return;
@@ -47,12 +84,11 @@ export const AdminDashboard = () => {
       ...newContent,
       id: Math.random().toString(36).substr(2, 9),
       addedAt: Date.now(),
-      rating: 0,
       cast: (newContent.cast as any || '').toString().split(',').map((s: string) => s.trim())
     } as Content);
     
     setShowAddModal(false);
-    setNewContent({ type: ContentType.MOVIE, category: categories[0]?.name || 'Action' });
+    setNewContent({ type: ContentType.MOVIE, category: categories[0]?.name || 'Action', rating: 5, episodes: [] });
   };
 
   const handleAddCategory = (e: React.FormEvent) => {
@@ -64,6 +100,7 @@ export const AdminDashboard = () => {
   };
 
   const pendingUsersCount = users.filter(u => u.subscriptionStatus === 'PENDING').length;
+  const suggestionsCount = suggestions.length;
 
   return (
     <div className="min-h-screen bg-vtv-dark text-white p-4 pb-20 md:pb-4">
@@ -88,6 +125,14 @@ export const AdminDashboard = () => {
             </span>
           )}
         </button>
+        <button onClick={() => setTab('suggestions')} className={`relative flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition whitespace-nowrap ${tab === 'suggestions' ? 'bg-vtv-neon text-black' : 'bg-vtv-card text-gray-400'}`}>
+          <MessageSquare size={20} /> Suggestions
+          {suggestionsCount > 0 && (
+            <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs w-6 h-6 flex items-center justify-center rounded-full">
+              {suggestionsCount}
+            </span>
+          )}
+        </button>
         <button onClick={() => setTab('custom')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition whitespace-nowrap ${tab === 'custom' ? 'bg-vtv-neon text-black' : 'bg-vtv-card text-gray-400'}`}>
           <Settings size={20} /> Personnalisation
         </button>
@@ -105,9 +150,15 @@ export const AdminDashboard = () => {
             {content.map(item => (
               <div key={item.id} className="relative group bg-vtv-card rounded-lg overflow-hidden border border-gray-800">
                 <img src={item.posterUrl} alt={item.title} className="w-full aspect-[2/3] object-cover" />
+                <div className="absolute top-2 left-2 bg-black/70 px-2 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                    <Star size={10} fill="currentColor" /> {item.rating || '-'}
+                </div>
                 <div className="p-3">
                   <h3 className="font-bold truncate">{item.title}</h3>
-                  <p className="text-xs text-gray-400">{item.category}</p>
+                  <div className="flex justify-between items-center text-xs text-gray-400">
+                      <span>{item.category}</span>
+                      {item.type === ContentType.SERIES && <span>{item.episodes?.length || 0} eps</span>}
+                  </div>
                 </div>
                 <button 
                   onClick={() => deleteContent(item.id)}
@@ -203,18 +254,44 @@ export const AdminDashboard = () => {
                     </td>
                   </tr>
                 ))}
-                {users.length <= 1 && (
-                    <tr><td colSpan={5} className="p-8 text-center text-gray-500">Aucun abonné pour le moment.</td></tr>
-                )}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
+      {tab === 'suggestions' && (
+          <div className="bg-vtv-card rounded-xl p-6 border border-gray-800">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-400">
+                  <MessageSquare size={20} /> Suggestions des clients
+              </h2>
+              <div className="grid gap-4">
+                  {suggestions.length === 0 ? (
+                      <p className="text-gray-500 italic">Aucune suggestion pour le moment.</p>
+                  ) : (
+                      suggestions.map(s => (
+                          <div key={s.id} className="bg-black/40 p-4 rounded border border-gray-800 flex justify-between items-start">
+                              <div>
+                                  <h3 className="font-bold text-lg text-vtv-neon">{s.title}</h3>
+                                  <p className="text-gray-300 my-2">{s.message}</p>
+                                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                                      <span>Par: {s.userName}</span>
+                                      <span>•</span>
+                                      <span>{new Date(s.date).toLocaleDateString()}</span>
+                                  </div>
+                              </div>
+                              <button onClick={() => deleteSuggestion(s.id)} className="text-gray-600 hover:text-red-500">
+                                  <Trash size={16} />
+                              </button>
+                          </div>
+                      ))
+                  )}
+              </div>
+          </div>
+      )}
+
       {tab === 'custom' && (
          <div className="grid md:grid-cols-2 gap-6">
-             {/* Category Management */}
              <div className="bg-vtv-card rounded-xl p-6 border border-gray-800">
                 <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-vtv-neon">
                     <List size={20} /> Gestion des Catalogues
@@ -243,12 +320,6 @@ export const AdminDashboard = () => {
                         </div>
                     ))}
                 </div>
-             </div>
-             
-             {/* General Settings (Placeholder for future) */}
-             <div className="bg-vtv-card rounded-xl p-6 border border-gray-800 opacity-50 pointer-events-none">
-                 <h2 className="text-xl font-bold mb-4">Thème & Apparence</h2>
-                 <p className="text-gray-500 text-sm">Fonctionnalités à venir...</p>
              </div>
          </div>
       )}
@@ -279,22 +350,61 @@ export const AdminDashboard = () => {
                   {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
+
+              {/* Rating */}
+              <div className="flex items-center gap-4 bg-black/30 p-3 rounded">
+                  <span className="text-sm text-gray-400">Note (Top 10):</span>
+                  <input 
+                    type="range" min="0" max="10" step="0.1" 
+                    value={newContent.rating} 
+                    onChange={e => setNewContent({...newContent, rating: parseFloat(e.target.value)})}
+                    className="flex-1 accent-vtv-neon"
+                  />
+                  <span className="font-bold text-yellow-400">{newContent.rating}</span>
+              </div>
               
               <div className="border border-gray-700 rounded p-4 border-dashed hover:border-vtv-neon transition-colors cursor-pointer relative group">
                 <label className="block mb-2 text-sm text-gray-400 pointer-events-none">Affiche (Image)</label>
                 <input type="file" accept="image/*" onChange={e => handleFileChange(e, 'posterUrl')} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-vtv-neon file:text-black hover:file:bg-cyan-300"/>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="border border-gray-700 rounded p-4 border-dashed">
-                    <label className="block mb-2 text-sm text-gray-400">Vidéo (MP4)</label>
-                    <input type="file" accept="video/*" onChange={e => handleFileChange(e, 'videoUrl')} className="text-xs"/>
+              {newContent.type !== ContentType.SERIES ? (
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="border border-gray-700 rounded p-4 border-dashed">
+                        <label className="block mb-2 text-sm text-gray-400">Vidéo (MP4)</label>
+                        <input type="file" accept="video/*" onChange={e => handleFileChange(e, 'videoUrl')} className="text-xs"/>
+                    </div>
+                    <div className="border border-gray-700 rounded p-4 border-dashed">
+                        <label className="block mb-2 text-sm text-gray-400">Bande-annonce</label>
+                        <input type="file" accept="video/*" onChange={e => handleFileChange(e, 'trailerUrl')} className="text-xs"/>
+                    </div>
                 </div>
-                <div className="border border-gray-700 rounded p-4 border-dashed">
-                    <label className="block mb-2 text-sm text-gray-400">Bande-annonce</label>
-                    <input type="file" accept="video/*" onChange={e => handleFileChange(e, 'trailerUrl')} className="text-xs"/>
-                </div>
-              </div>
+              ) : (
+                  /* Series Episode Manager */
+                  <div className="bg-black/20 p-4 rounded border border-gray-800">
+                      <h3 className="font-bold text-sm mb-2 text-gray-400">Gestion des Épisodes</h3>
+                      <div className="grid grid-cols-4 gap-2 mb-2">
+                          <input type="number" placeholder="Saison" className="bg-black p-2 rounded text-sm" value={tempEp.season} onChange={e => setTempEp({...tempEp, season: parseInt(e.target.value)})} />
+                          <input type="number" placeholder="Ep" className="bg-black p-2 rounded text-sm" value={tempEp.episodeNumber} onChange={e => setTempEp({...tempEp, episodeNumber: parseInt(e.target.value)})} />
+                          <input type="text" placeholder="Titre épisode" className="col-span-2 bg-black p-2 rounded text-sm" value={tempEp.title} onChange={e => setTempEp({...tempEp, title: e.target.value})} />
+                      </div>
+                      <input type="file" accept="video/*" onChange={handleEpisodeFile} className="text-xs mb-2 block w-full" />
+                      <button type="button" onClick={addEpisodeToNewContent} disabled={!tempEp.title || !tempEp.videoUrl} className="w-full bg-gray-700 hover:bg-white hover:text-black py-2 rounded text-xs font-bold transition disabled:opacity-50">
+                          AJOUTER ÉPISODE
+                      </button>
+
+                      {newContent.episodes && newContent.episodes.length > 0 && (
+                          <div className="mt-3 space-y-1 max-h-32 overflow-y-auto">
+                              {newContent.episodes.map((ep, idx) => (
+                                  <div key={idx} className="flex justify-between text-xs bg-black/40 p-1 px-2 rounded">
+                                      <span>S{ep.season} E{ep.episodeNumber}: {ep.title}</span>
+                                      <span className="text-green-500">OK</span>
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                  </div>
+              )}
 
               <textarea 
                 placeholder="Synopsis" 

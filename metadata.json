@@ -1,7 +1,5 @@
 {
-  "name": "VTV Streaming & Voice",
-  "description": "Premium streaming platform with Admin management and Gemini Live voice assistant.",
-  "requestFramePermissions": [
-    "microphone"
-  ]
+  "name": "VTV Streaming",
+  "description": "Premium streaming platform with Admin management.",
+  "requestFramePermissions": []
 }
